@@ -1,0 +1,37 @@
+{
+  "name": "diary_retrieve",
+  "description": "Retrieve diary entries from the database, either by date or get the most recent entries.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "date": {
+        "type": "string",
+        "description": "Specific date to retrieve (YYYY-MM-DD format). If not provided, returns recent entries."
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Maximum number of recent entries to return (default: 5)",
+        "default": 5
+      }
+    }
+  },
+  "returns": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "integer"},
+        "content": {"type": "string"},
+        "date": {"type": "string"}
+      }
+    }
+  },
+  "examples": [
+    {
+      "limit": 3
+    },
+    {
+      "date": "2024-01-15"
+    }
+  ]
+}

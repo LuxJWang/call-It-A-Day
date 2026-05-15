@@ -1,0 +1,35 @@
+{
+  "name": "memory_add",
+  "description": "Add a new long-term memory to the vector store for future retrieval.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "content": {
+        "type": "string",
+        "description": "The content to remember"
+      },
+      "metadata": {
+        "type": "object",
+        "description": "Optional metadata about the memory",
+        "properties": {
+          "category": {"type": "string"},
+          "importance": {"type": "string", "enum": ["high", "medium", "low"]}
+        }
+      }
+    },
+    "required": ["content"]
+  },
+  "returns": {
+    "type": "object",
+    "properties": {
+      "memory_id": {"type": "string"},
+      "status": {"type": "string"}
+    }
+  },
+  "examples": [
+    {
+      "content": "User mentioned they have a dog named Max who is 5 years old",
+      "metadata": {"category": "personal", "importance": "medium"}
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+const API_URL = 'http://localhost:8080';
 
 interface DiaryEntry {
   id: number;

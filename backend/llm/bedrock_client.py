@@ -1,75 +1,50 @@
-import json
-import boto3
-from botocore.exceptions import ClientError
+"""LLM factory using user-managed OpenAI-compatible model configs."""
+
+from typing import Optional
+from langchain_openai import ChatOpenAI
 from config import get_settings
-from typing import List, Dict, Any, Optional
+from services.config_registry import config_registry
 
 settings = get_settings()
 
 
-class BedrockClient:
-    def __init__(self):
-        self.client = boto3.client(
-            service_name="bedrock-runtime",
-            region_name=settings.AWS_REGION,
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID or None,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY or None
-        )
-        self.model_id = settings.LLM_MODEL_ID
+def get_llm(model_id: Optional[str] = None, temperature: float = 0.7, purpose: Optional[str] = None) -> ChatOpenAI:
+    """
+    Get a configured ChatOpenAI instance for Bedrock.
 
-    def generate(self, prompt: str, system_prompt: Optional[str] = None, max_tokens: int = 2048) -> str:
-        messages = [{"role": "user", "content": prompt}]
+    Args:
+        model_id: Model ID (defaults to settings.LLM_MODEL_ID)
+        temperature: Sampling temperature
 
-        body = {
-            "prompt": self._format_prompt(messages, system_prompt),
-            "max_gen_len": max_tokens,
-            "temperature": 0.7,
-            "top_p": 0.9
-        }
-
-        try:
-            response = self.client.invoke_model(
-                modelId=self.model_id,
-                body=json.dumps(body)
-            )
-            response_body = json.loads(response["body"].read())
-            return response_body.get("generation", "").strip()
-        except ClientError as e:
-            print(f"Error calling Bedrock: {e}")
-            raise
-
-    def generate_with_history(self, messages: List[Dict[str, str]], system_prompt: Optional[str] = None, max_tokens: int = 2048) -> str:
-        body = {
-            "prompt": self._format_prompt(messages, system_prompt),
-            "max_gen_len": max_tokens,
-            "temperature": 0.7,
-            "top_p": 0.9
-        }
-
-        try:
-            response = self.client.invoke_model(
-                modelId=self.model_id,
-                body=json.dumps(body)
-            )
-            response_body = json.loads(response["body"].read())
-            return response_body.get("generation", "").strip()
-        except ClientError as e:
-            print(f"Error calling Bedrock: {e}")
-            raise
-
-    def _format_prompt(self, messages: List[Dict[str, str]], system_prompt: Optional[str] = None) -> str:
-        formatted = ""
-        if system_prompt:
-            formatted += f"<|system|>\n{system_prompt}\n"
-        for msg in messages:
-            role = msg["role"]
-            content = msg["content"]
-            if role == "user":
-                formatted += f"<|user|>\n{content}\n"
-            elif role == "assistant":
-                formatted += f"<|assistant|>\n{content}\n"
-        formatted += "<|assistant|>\n"
-        return formatted
+    Returns:
+        Configured ChatOpenAI instance
+    """
+    config = config_registry.get_model(purpose) if purpose else None
+    model = model_id or (config.model if config else settings.LLM_MODEL_ID)
+    api_key = (config.api_key if config else None) or settings.OPENAI_API_KEY or settings.BEDROCK_KEY or settings.AWS_SECRET_ACCESS_KEY
+    base_url = (config.base_url if config else None) or settings.OPENAI_BASE_URL or settings.BEDROCK_URL
+    llm_temperature = config.temperature if config and temperature == 0.7 else temperature
+    kwargs = {}
+    if config and config.max_tokens:
+        kwargs["max_tokens"] = config.max_tokens
+    return ChatOpenAI(
+        model=model,
+        openai_api_key=api_key,
+        openai_api_base=base_url,
+        temperature=llm_temperature,
+        **kwargs,
+    )
 
 
-bedrock_client = BedrockClient()
+def get_llm_for_purpose(purpose: str) -> ChatOpenAI:
+    """Build an LLM from the in-memory purpose config."""
+    config = config_registry.get_model(purpose)
+    return get_llm(model_id=config.model, temperature=config.temperature, purpose=purpose)
+
+
+class LazyLLM:
+    def invoke(self, *args, **kwargs):
+        return get_llm().invoke(*args, **kwargs)
+
+
+llm = LazyLLM()

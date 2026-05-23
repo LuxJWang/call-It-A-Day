@@ -13,7 +13,7 @@ function DiarySection() {
   const [newEntry, setNewEntry] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const { items, loading, hasMore, containerRef, addItem } = useInfiniteScroll<DiaryEntry>({
+  const { items, loading, hasMore, containerRef, addItem, loadMore } = useInfiniteScroll<DiaryEntry>({
     fetchData: async (skip, limit) => {
       const response = await fetch(`${API_URL}/api/diaries?skip=${skip}&limit=${limit}`);
       if (!response.ok) throw new Error('Failed to fetch diary entries');
@@ -52,7 +52,7 @@ function DiarySection() {
       <div className="history-container" ref={containerRef}>
         {hasMore && (
           <div className="load-more">
-            <button className="load-more-btn" disabled={loading}>
+            <button className="load-more-btn" onClick={loadMore} disabled={loading}>
               {loading ? 'Loading...' : 'Load more'}
             </button>
           </div>

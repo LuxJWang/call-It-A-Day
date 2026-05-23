@@ -120,6 +120,50 @@ body {
   cursor: not-allowed;
 }
 
+.submit-btn.compact {
+  padding: 8px 18px;
+  align-self: flex-start;
+}
+
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 12px;
+}
+
+.config-card {
+  border: 1px solid #e6e6e6;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.config-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #495057;
+}
+
+.config-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: #666;
+}
+
+.config-input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 8px;
+  font: inherit;
+}
+
 .chat-messages {
   display: flex;
   flex-direction: column;
@@ -180,4 +224,46 @@ body {
 
 .load-more-btn:hover {
   text-decoration: underline;
+}
+
+.trace-panel {
+  border-top: 1px solid #e0e0e0;
+  padding: 12px;
+  background: #fbfcfd;
+}
+
+.trace-header {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #495057;
+  margin-bottom: 8px;
+}
+
+.trace-event {
+  border: 1px solid #e6e9ec;
+  border-radius: 8px;
+  background: white;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.trace-event summary {
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 64px 1fr 92px 1fr 64px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  font-size: 0.78rem;
+  color: #555;
+}
+
+.trace-event pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 10px;
+  background: #f6f8fa;
+  font-size: 0.75rem;
+  max-height: 220px;
+  overflow: auto;
 }

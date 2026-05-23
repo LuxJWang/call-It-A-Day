@@ -9,12 +9,26 @@ interface ChatMessage {
   created_at: string;
 }
 
+interface TraceEvent {
+  id: number;
+  layer?: string;
+  node_name: string;
+  event_type: string;
+  tool_name?: string;
+  input_json?: Record<string, unknown>;
+  output_json?: Record<string, unknown>;
+  latency_ms?: number;
+  created_at: string;
+}
+
 function ChatSection() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [skip, setSkip] = useState(0);
+  const [traceEvents, setTraceEvents] = useState<TraceEvent[]>([]);
+  const [lastRunId, setLastRunId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -73,6 +87,8 @@ function ChatSection() {
       if (!response.ok) throw new Error('Failed to get response');
 
       const data = await response.json();
+      setTraceEvents(data.trace_events || []);
+      setLastRunId(data.run_id || null);
 
       const assistantMessage: ChatMessage = {
         id: Date.now() + 1,
@@ -118,6 +134,24 @@ function ChatSection() {
 
         <div ref={messagesEndRef} />
       </div>
+
+      {traceEvents.length > 0 && (
+        <div className="trace-panel">
+          <div className="trace-header">Tool Trace {lastRunId ? `· ${lastRunId.slice(0, 8)}` : ''}</div>
+          {traceEvents.map((event) => (
+            <details className="trace-event" key={event.id}>
+              <summary>
+                <span>{event.layer || 'system'}</span>
+                <strong>{event.node_name}</strong>
+                <span>{event.event_type}</span>
+                {event.tool_name && <span>{event.tool_name}</span>}
+                {event.latency_ms != null && <span>{event.latency_ms}ms</span>}
+              </summary>
+              <pre>{JSON.stringify({ input: event.input_json, output: event.output_json }, null, 2)}</pre>
+            </details>
+          ))}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="input-container">
         <textarea

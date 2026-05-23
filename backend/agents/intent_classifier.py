@@ -1,6 +1,8 @@
 import json
 from typing import Dict, Any
-from llm import bedrock_client, load_intent_prompt
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from llm import get_llm, load_intent_prompt
 
 
 def classify_intent(user_message: str, chat_history: list, agent_summary: Dict[str, Any]) -> Dict[str, Any]:
@@ -38,18 +40,20 @@ User Message: {user_message}
 Respond with JSON only:"""
 
     try:
-        response = bedrock_client.generate(
-            prompt=prompt,
-            max_tokens=512
-        )
+        messages = [
+            SystemMessage(content="You are an intent classifier. Respond with JSON only."),
+            HumanMessage(content=prompt)
+        ]
+        response = get_llm(temperature=0.3, purpose="intent_recognition").invoke(messages)
+        content = response.content
 
-        json_start = response.find("{")
-        json_end = response.rfind("}") + 1
+        json_start = content.find("{")
+        json_end = content.rfind("}") + 1
         if json_start >= 0 and json_end > json_start:
-            json_str = response[json_start:json_end]
+            json_str = content[json_start:json_end]
             result = json.loads(json_str)
         else:
-            result = json.loads(response)
+            result = json.loads(content)
 
         return {
             "needs_tools": result.get("needs_tools", False),

@@ -6,14 +6,19 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 import uuid
 
-from database import init_db, get_db
-from models import DiaryEntry, ChatMessage
+from database import SessionLocal, init_db, get_db
+from models import (
+    ChatMessage, ChatRun, ChatTraceEvent, DiaryEntry, ModelConfig, RuntimeConfig, SoulDocument
+)
 from schemas import (
     DiaryEntryCreate, DiaryEntryResponse, ChatMessageCreate, ChatMessageResponse,
-    ChatRequest, ChatResponse, PaginatedDiaryEntries, PaginatedChatMessages
+    ChatRequest, ChatResponse, ModelConfigPayload, ModelConfigResponse,
+    PaginatedDiaryEntries, PaginatedChatMessages, RuntimeConfigPayload,
+    RuntimeConfigResponse, SoulDocumentResponse, TraceEventResponse
 )
-from embeddings import embedding_store
 from agents import ChatWorkflow
+from services.config_registry import config_registry
+from services.diary_service import DiaryRetrievalService, DiaryStorageService
 
 app = FastAPI(title="CallItADay", version="1.0.0")
 
@@ -29,28 +34,16 @@ app.add_middleware(
 @app.on_event("startup")
 def startup():
     init_db()
+    db = SessionLocal()
+    try:
+        config_registry.load_from_db(db)
+    finally:
+        db.close()
 
 
 @app.post("/api/diaries", response_model=DiaryEntryResponse)
 def create_diary(entry: DiaryEntryCreate, db: Session = Depends(get_db)):
-    db_entry = DiaryEntry(content=entry.content)
-    db.add(db_entry)
-    db.commit()
-    db.refresh(db_entry)
-
-    embedding_id = embedding_store.add_entry(
-        entry_id=str(db_entry.id),
-        content=entry.content,
-        metadata={
-            "created_at": db_entry.created_at.isoformat(),
-            "entry_id": db_entry.id
-        }
-    )
-
-    db_entry.embedding_id = embedding_id
-    db.commit()
-
-    return db_entry
+    return DiaryStorageService(db).add_diary(entry.content, occurred_at=entry.occurred_at)
 
 
 @app.get("/api/diaries", response_model=PaginatedDiaryEntries)
@@ -67,8 +60,8 @@ def list_diaries(
 
 
 @app.get("/api/diaries/search")
-def search_diaries(query: str, limit: int = Query(5, ge=1, le=20)):
-    results = embedding_store.search_similar(query, n_results=limit)
+def search_diaries(query: str, limit: int = Query(5, ge=1, le=20), db: Session = Depends(get_db)):
+    results = DiaryRetrievalService(db).search(query, limit=limit)
     return {"results": results}
 
 
@@ -95,7 +88,8 @@ def chat(request: ChatRequest, db: Session = Depends(get_db)):
     result = workflow.process_message(
         user_message=request.message,
         chat_history=chat_history[:-1],
-        session_id=request.session_id
+        session_id=request.session_id,
+        user_message_id=user_message.id,
     )
 
     assistant_message = ChatMessage(
@@ -105,10 +99,38 @@ def chat(request: ChatRequest, db: Session = Depends(get_db)):
     )
     db.add(assistant_message)
     db.commit()
+    db.refresh(assistant_message)
+
+    run = db.query(ChatRun).filter(ChatRun.run_id == result["run_id"]).first()
+    if run:
+        run.assistant_message_id = assistant_message.id
+        run.response = result["response"]
+        db.commit()
+
+    trace_events = db.query(ChatTraceEvent).filter(
+        ChatTraceEvent.run_id == result["run_id"]
+    ).order_by(ChatTraceEvent.created_at.asc()).all()
 
     return ChatResponse(
         response=result["response"],
-        tool_calls=result.get("tool_calls")
+        tool_calls=result.get("tool_calls"),
+        run_id=result.get("run_id"),
+        trace_events=[
+            {
+                "id": event.id,
+                "run_id": event.run_id,
+                "session_id": event.session_id,
+                "layer": event.layer,
+                "node_name": event.node_name,
+                "event_type": event.event_type,
+                "tool_name": event.tool_name,
+                "input_json": event.input_json,
+                "output_json": event.output_json,
+                "latency_ms": event.latency_ms,
+                "created_at": event.created_at.isoformat(),
+            }
+            for event in trace_events
+        ],
     )
 
 
@@ -130,6 +152,56 @@ def list_chat_messages(
 @app.get("/api/health")
 def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+
+
+@app.get("/api/model-configs", response_model=List[ModelConfigResponse])
+def list_model_configs(db: Session = Depends(get_db)):
+    return db.query(ModelConfig).order_by(ModelConfig.purpose.asc()).all()
+
+
+@app.put("/api/model-configs/{purpose}", response_model=ModelConfigResponse)
+def update_model_config(purpose: str, payload: ModelConfigPayload, db: Session = Depends(get_db)):
+    row = db.query(ModelConfig).filter(ModelConfig.purpose == purpose).first()
+    if not row:
+        row = ModelConfig(purpose=purpose)
+        db.add(row)
+    for key, value in payload.model_dump().items():
+        setattr(row, key, value)
+    db.commit()
+    db.refresh(row)
+    config_registry.set_model(row)
+    return row
+
+
+@app.get("/api/runtime-configs", response_model=List[RuntimeConfigResponse])
+def list_runtime_configs(db: Session = Depends(get_db)):
+    return db.query(RuntimeConfig).order_by(RuntimeConfig.key.asc()).all()
+
+
+@app.put("/api/runtime-configs/{key}", response_model=RuntimeConfigResponse)
+def update_runtime_config(key: str, payload: RuntimeConfigPayload, db: Session = Depends(get_db)):
+    row = db.query(RuntimeConfig).filter(RuntimeConfig.key == key).first()
+    if not row:
+        row = RuntimeConfig(key=key, value_json=payload.value_json)
+        db.add(row)
+    else:
+        row.value_json = payload.value_json
+    db.commit()
+    db.refresh(row)
+    config_registry.set_runtime(row)
+    return row
+
+
+@app.get("/api/chat/runs/{run_id}/trace", response_model=List[TraceEventResponse])
+def get_chat_trace(run_id: str, db: Session = Depends(get_db)):
+    return db.query(ChatTraceEvent).filter(
+        ChatTraceEvent.run_id == run_id
+    ).order_by(ChatTraceEvent.created_at.asc()).all()
+
+
+@app.get("/api/soul-docs", response_model=List[SoulDocumentResponse])
+def list_soul_docs(db: Session = Depends(get_db)):
+    return db.query(SoulDocument).order_by(SoulDocument.name.asc()).all()
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""LLM factory using user-managed OpenAI-compatible model configs."""
+"""Model factory using user-managed, provider-agnostic model configs."""
 
 from typing import Optional
 from langchain_openai import ChatOpenAI
@@ -10,19 +10,19 @@ settings = get_settings()
 
 def get_llm(model_id: Optional[str] = None, temperature: float = 0.7, purpose: Optional[str] = None) -> ChatOpenAI:
     """
-    Get a configured ChatOpenAI instance for Bedrock.
+    Get a configured chat model client.
 
     Args:
-        model_id: Model ID (defaults to settings.LLM_MODEL_ID)
+        model_id: Model ID (defaults to settings.DEFAULT_LLM_MODEL)
         temperature: Sampling temperature
 
     Returns:
-        Configured ChatOpenAI instance
+        Configured OpenAI-compatible chat client
     """
     config = config_registry.get_model(purpose) if purpose else None
-    model = model_id or (config.model if config else settings.LLM_MODEL_ID)
-    api_key = (config.api_key if config else None) or settings.OPENAI_API_KEY or settings.BEDROCK_KEY or settings.AWS_SECRET_ACCESS_KEY
-    base_url = (config.base_url if config else None) or settings.OPENAI_BASE_URL or settings.BEDROCK_URL
+    model = model_id or (config.model if config else settings.DEFAULT_LLM_MODEL)
+    api_key = (config.api_key if config else None) or settings.MODEL_API_KEY
+    base_url = (config.base_url if config else None) or settings.MODEL_BASE_URL
     llm_temperature = config.temperature if config and temperature == 0.7 else temperature
     kwargs = {}
     if config and config.max_tokens:

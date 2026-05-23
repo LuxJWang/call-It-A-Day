@@ -83,7 +83,7 @@ class ConfigRegistry:
         )
 
     def _fallback_model(self, purpose: str) -> LLMConfig:
-        model = settings.LLM_MODEL_ID
+        model = settings.DEFAULT_LLM_MODEL
         if purpose == "embedding":
             model = settings.EMBEDDING_MODEL
         if purpose == "cross_encoder":
@@ -93,8 +93,8 @@ class ConfigRegistry:
         return LLMConfig(
             purpose=purpose,
             provider="openai_compatible",
-            base_url=settings.OPENAI_BASE_URL or settings.BEDROCK_URL,
-            api_key=settings.OPENAI_API_KEY or settings.BEDROCK_KEY or settings.AWS_SECRET_ACCESS_KEY,
+            base_url=settings.MODEL_BASE_URL,
+            api_key=settings.MODEL_API_KEY,
             model=model,
             temperature=0.7,
             max_tokens=None,

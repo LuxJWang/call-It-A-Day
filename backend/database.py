@@ -53,9 +53,9 @@ def _seed_defaults():
             db.add(ModelConfig(
                 purpose=purpose,
                 provider="openai_compatible",
-                base_url=settings.OPENAI_BASE_URL or settings.BEDROCK_URL,
-                api_key=settings.OPENAI_API_KEY or settings.BEDROCK_KEY or settings.AWS_SECRET_ACCESS_KEY,
-                model=override.get("model", settings.LLM_MODEL_ID),
+                base_url=settings.MODEL_BASE_URL,
+                api_key=settings.MODEL_API_KEY,
+                model=override.get("model", settings.DEFAULT_LLM_MODEL),
                 temperature=override.get("temperature", 0.7),
                 enabled=override.get("enabled", True),
                 extra_json={},

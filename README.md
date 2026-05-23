@@ -1,235 +1,247 @@
 # CallItADay
 
-A diary and chat application that helps you reflect on your day with AI-powered memory retrieval and conversation.
+CallItADay is a diary and chat application built around model-agnostic agents, structured diary storage, hybrid retrieval, and visible tool traces.
 
-![CallItADay Screenshot](./CallItADay.png)
+The application lets a user write diary entries, search them through dense and sparse retrieval, and chat with an assistant that can call explicit skills for chat history, diary memory, and soul document management.
 
-## Features
+## Current Capabilities
 
-- **Diary History**: Write and view your daily entries with infinite scroll
-- **Smart Embeddings**: Diary entries are automatically embedded and stored in ChromaDB for semantic search
-- **AI Chat**: Chat with an AI companion that remembers your past entries and can retrieve relevant memories
-- **Two-Turn Agent Architecture**: Efficient intent classification before tool execution
-- **Independent "Soul"**: System prompts are editable files, allowing personality customization without code changes
+- Diary writing with PostgreSQL as the structured source of truth.
+- Semantic splitting for diary chunks before indexing.
+- Milvus vector storage for dense embedding recall.
+- Elasticsearch sparse index for BM25, metadata, and time filtering.
+- Hybrid retrieval with RRF fusion and CrossEncoder reranking.
+- LangGraph-based chat workflow with a first-layer intent/tool loop and second-layer response generation.
+- Three model configurations managed from the UI and persisted to DB:
+  - `intent_recognition`
+  - `tool_enrichment`
+  - `response_generation`
+- Runtime chat settings managed from the UI, including first-layer max iterations.
+- Tool trace visualization in the frontend.
+- Soul documents persisted in DB with changelog support:
+  - `diary-soul.md`
+  - `user-soul.md`
+  - `soul_system_prompt.md`
 
 ## Architecture
 
+```text
+React + Vite frontend
+        |
+        v
+FastAPI backend
+        |
+        +-- LangGraph chat workflow
+        |      |
+        |      +-- chat-manager skill
+        |      +-- diary-manager skill
+        |      +-- soul-manager skill
+        |
+        +-- Model client
+        |      |
+        |      +-- OpenAI-compatible HTTP endpoint
+        |      +-- User-configured provider/model/base URL/API key
+        |
+        +-- PostgreSQL
+        |      |
+        |      +-- chat messages
+        |      +-- diary records
+        |      +-- diary chunk mapping
+        |      +-- model/runtime configs
+        |      +-- soul docs and changelogs
+        |      +-- local tool trace events
+        |
+        +-- Milvus
+        |      |
+        |      +-- dense diary chunk embeddings
+        |
+        +-- Elasticsearch
+               |
+               +-- BM25 text
+               +-- metadata
+               +-- time filters
 ```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   React Frontend │────▶│   FastAPI        │────▶│   PostgreSQL    │
-│   (Port 3000)   │     │   Backend        │     │   (Data)        │
-└─────────────────┘     │   (Port 8080)    │     └─────────────────┘
-                        │                  │
-                        │  ┌────────────┐  │     ┌─────────────────┐
-                        │  │ LangGraph  │  │────▶│   ChromaDB      │
-                        │  │  Agents    │  │     │   (Vectors)     │
-                        │  └────────────┘  │     │   Sparse+Dense  │
-                        │                  │     └─────────────────┘
-                        │  ┌────────────┐  │
-                        │  │ LangChain  │  │────▶ AWS Bedrock
-                        │  │  Tools     │  │      (Llama/Mistral)
-                        │  └────────────┘  │
-                        │                  │
-                        │  ┌────────────┐  │
-                        │  │   Soul     │  │◄──── system_prompts/
-                        │  │  Config    │  │      (independent)
-                        │  └────────────┘  │
-                        └──────────────────┘
+
+The backend is provider agnostic at the application layer. It expects a chat model endpoint compatible with the OpenAI chat API shape, but that endpoint can be backed by any provider or gateway that implements the protocol.
+
+## Diary Ingestion
+
+Diary ingestion uses this order:
+
+```text
+raw diary
+  -> semantic splitting
+  -> document + chunk metadata extraction
+  -> local embedding
+  -> PostgreSQL diary/chunk rows
+  -> Milvus dense vectors
+  -> Elasticsearch sparse/metadata docs
 ```
+
+Semantic splitting happens before metadata extraction so the metadata model can produce both document-level fields and chunk-level fields. This makes sparse retrieval and metadata filtering more precise than assigning one coarse metadata object to every chunk.
+
+The semantic splitter uses LangChain's `SemanticChunker` when available, with a recursive character splitter fallback for local resilience.
+
+## Retrieval
+
+Diary search uses a staged retrieval pipeline:
+
+```text
+query
+  -> query understanding
+  -> Milvus dense recall
+  -> Elasticsearch BM25 sparse recall
+  -> RRF fusion
+  -> optional LambdaMART stage
+  -> optional ColBERT stage
+  -> CrossEncoder rerank
+```
+
+LambdaMART and ColBERT are pluggable stages. CrossEncoder reranking is the first concrete reranker enabled by default.
+
+## Chat Workflow
+
+The chat workflow is implemented with LangGraph.
+
+Layer 1 performs intent recognition and information enrichment. It receives:
+
+- the layer-1 prompt
+- length-bounded chat history
+- `diary-soul.md`
+- skill schemas
+- current iteration and max iteration count
+
+Layer 1 can call:
+
+- `chat-manager`
+  - `query_chat_messages`
+  - `count_chat_messages`
+- `diary-manager`
+  - `search_diaries`
+  - `add_diary`
+- `soul-manager`
+  - `read_soul_docs`
+  - `apply_soul_change`
+
+If the user request only modifies soul documents and the modification is handled, the workflow can end after layer 1. Otherwise layer 2 generates the final user-facing response.
+
+## Model And Runtime Configuration
+
+The UI exposes model configuration for:
+
+- intent recognition
+- tool enrichment
+- response generation
+
+Configurations are stored in PostgreSQL and loaded into an in-memory registry at backend startup. Updates through the API write to DB and immediately refresh the in-memory registry, so each chat request does not need to reload config from DB.
+
+The runtime config includes chat settings such as:
+
+- `layer1_max_iterations`
+- `history_max_chars`
+- `message_max_chars`
+- `tool_trace_enabled`
+
+## Tool Trace
+
+Tool trace is stored locally in PostgreSQL and shown in the frontend after each chat response.
+
+Trace events include:
+
+- graph node
+- layer
+- event type
+- tool name
+- input JSON
+- output JSON
+- latency
+
+LangSmith can also be enabled through environment variables for deeper LangGraph/LangChain tracing.
 
 ## Tech Stack
 
-| Component | Technology |
-|-----------|------------|
-| Frontend | React + Vite + TypeScript |
-| Backend | FastAPI + SQLAlchemy |
-| Agent Framework | LangChain + LangGraph |
-| Database | PostgreSQL |
-| Vector Store | ChromaDB (sparse + dense embeddings) |
-| Embeddings | sentence-transformers (local) |
-| LLM | AWS Bedrock (Llama 3 / Mistral) |
-
-## Data Flow
-
-### Turn 1: Intent Detection
-```
-Input: User message + Chat history + Agent Summary
-       (Agent Summary contains: diary count, recent topics, mood, etc.)
-       
-Prompt: Given the conversation and summary, do you need detailed tools?
-        Reply with: { "needs_tools": true/false, "tool_name": "..." or null }
-        
-Output: Simple JSON decision - NO detailed tool specs yet
-```
-
-### Branch A: Direct Response (if no tools needed)
-```
-Input: User message + Chat history + Soul System Prompt
-LLM Call: Single turn
-Output: Direct response to user
-```
-
-### Branch B: Tool Execution (if tools needed)
-```
-Step 1: Inject detailed tool specifications into context
-        - Tool name, description, parameters, examples
-        
-Step 2: LLM generates tool call with specific parameters
-        - e.g., memory_search(query="running injury", limit=5)
-        
-Step 3: Execute tool, get results
-
-Step 4: Final LLM call with results
-        Input: User message + Chat history + Tool results + Soul System Prompt
-        Output: Response to user incorporating tool results
-```
-
-## Project Structure
-
-```
-callItADay/
-├── docker-compose.yml          # Orchestrates all services
-├── .env.example                # AWS credentials template
-├── backend/
-│   ├── main.py                 # FastAPI endpoints
-│   ├── models.py               # SQLAlchemy models
-│   ├── embeddings.py           # ChromaDB integration
-│   ├── agents/
-│   │   ├── workflow.py         # Two-turn chat workflow
-│   │   ├── intent_classifier.py # Turn 1: classify intent
-│   │   └── summary_builder.py  # Agent summary generator
-│   ├── tools/
-│   │   ├── memory_tools.py     # ChromaDB search/add
-│   │   └── diary_tools.py      # PostgreSQL diary queries
-│   ├── llm/
-│   │   ├── bedrock_client.py   # AWS Bedrock (Llama/Mistral)
-│   │   └── prompt_loader.py    # Soul configuration loader
-│   └── soul/                   # THE SOUL - independent & editable
-│       ├── system_prompt.txt   # Main personality
-│       ├── intent_prompt.txt   # Intent classification
-│       └── tool_specs/         # Detailed tool schemas
-│           ├── memory_search.json
-│           ├── memory_add.json
-│           └── diary_retrieve.json
-└── frontend/
-    └── src/
-        ├── App.tsx
-        ├── components/
-        │   ├── DiarySection.tsx
-        │   └── ChatSection.tsx
-        └── hooks/
-            └── useInfiniteScroll.ts
-```
+| Area | Technology |
+| --- | --- |
+| Frontend | React, Vite, TypeScript |
+| Backend | FastAPI, SQLAlchemy |
+| Agent workflow | LangGraph |
+| Structured DB | PostgreSQL |
+| Vector DB | Milvus |
+| Sparse search | Elasticsearch |
+| Embedding/rerank | sentence-transformers |
+| Model protocol | OpenAI-compatible chat API |
+| Local trace | PostgreSQL |
+| Optional trace | LangSmith |
 
 ## Quick Start
 
 ### Prerequisites
 
 - Docker and Docker Compose
-- AWS account with Bedrock access
-- AWS credentials (Access Key ID and Secret Access Key)
+- A model endpoint compatible with the OpenAI chat API shape
 
-### 1. Clone and Configure
+### Configure
 
-```bash
-git clone <repository-url>
-cd callItADay
-
-# Copy the example environment file
-cp .env.example .env
-
-# Edit .env with your AWS credentials
-# Available models:
-# - meta.llama3-70b-instruct-v1:0 (default, recommended)
-# - meta.llama3-8b-instruct-v1:0 (faster, cheaper)
-# - mistral.mistral-large-2402-v1:0
-# - mistral.mixtral-8x7b-instruct-v0:1
-```
-
-### 2. Start Services
+Create or edit `.env`:
 
 ```bash
-docker-compose up --build
+MODEL_BASE_URL=https://your-model-gateway.example.com/v1
+MODEL_API_KEY=your-api-key
+DEFAULT_LLM_MODEL=your-default-chat-model
+
+EMBEDDING_MODEL=BAAI/bge-small-zh-v1.5
+CROSS_ENCODER_MODEL=cross-encoder/ms-marco-MiniLM-L6-v2
+
+LANGSMITH_TRACING=false
+LANGSMITH_PROJECT=call-it-a-day
+LANGSMITH_API_KEY=
 ```
 
-### 3. Access the Application
+You can also change the three chat model configs from the application UI after startup.
 
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8080
-- **API Documentation**: http://localhost:8080/docs
+### Start
 
-## The "Soul" - Customizing the AI Personality
-
-The personality and behavior of the AI companion can be customized by editing files in `backend/soul/`:
-
-### system_prompt.txt
-Main personality and response style:
-```
-You are a thoughtful and empathetic diary companion. Your role is to:
-1. Listen attentively to the user's thoughts and experiences
-2. Offer gentle, supportive responses
-3. Help them reflect on their day and patterns in their life
-...
-```
-
-### intent_prompt.txt
-Guidelines for when to use tools vs direct response.
-
-### tool_specs/
-JSON schemas for each tool that can be called.
-
-**Note**: After editing these files, restart the backend container:
 ```bash
-docker-compose restart backend
+docker compose up --build
 ```
 
-## Available Tools
+Open:
 
-| Tool | Description | When Used |
-|------|-------------|-----------|
-| `memory_search` | Semantic search through diary entries and memories | User asks about past events, patterns, or history |
-| `memory_add` | Save important information for long-term retrieval | User shares facts worth remembering (birthdays, preferences, etc.) |
-| `diary_retrieve` | Get specific diary entries by date or recent entries | User references specific dates or asks about recent entries |
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8080
+- API docs: http://localhost:8080/docs
 
-## API Endpoints
+## Local Development
 
-### Diary Endpoints
-- `POST /api/diaries` - Create a new diary entry
-- `GET /api/diaries` - List diary entries (paginated)
-- `GET /api/diaries/search?query={query}` - Search entries semantically
-
-### Chat Endpoints
-- `POST /api/chat` - Send a message and get AI response
-- `GET /api/chat` - List chat messages (paginated)
-
-## Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `AWS_REGION` | AWS region for Bedrock | `us-east-1` |
-| `AWS_ACCESS_KEY_ID` | Your AWS access key | - |
-| `AWS_SECRET_ACCESS_KEY` | Your AWS secret key | - |
-| `LLM_MODEL_ID` | Bedrock model ID | `meta.llama3-70b-instruct-v1:0` |
-
-## Development
-
-### Running Backend Locally
+Backend:
 
 ```bash
 cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8080
+conda run -n callItADay python -m pip install -r requirements.txt
+conda run -n callItADay uvicorn main:app --reload --port 8080
 ```
 
-### Running Frontend Locally
+Frontend:
 
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
+
+Verification:
+
+```bash
+conda run -n callItADay python -m compileall backend
+cd frontend && npm run build
+```
+
+## Important Notes
+
+- The application no longer assumes a specific cloud provider.
+- The model client uses OpenAI-compatible request semantics as a transport protocol.
+- Milvus and Elasticsearch are started locally by Docker Compose.
+- The generated local folders such as `frontend/node_modules`, `frontend/dist`, and Python `__pycache__` may be kept to speed up repeated local runs.
 
 ## License
 

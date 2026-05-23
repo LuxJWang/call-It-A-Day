@@ -23,7 +23,8 @@ class DiaryStorageService:
         self.splitter = DiarySemanticSplitter()
 
     def add_diary(self, content: str, occurred_at: Optional[datetime] = None) -> DiaryEntry:
-        metadata = self._extract_metadata(content, occurred_at)
+        chunks = self.splitter.split(content)
+        metadata = self._extract_metadata(content, chunks, occurred_at)
         entry = DiaryEntry(
             title=metadata.get("title"),
             content=content,
@@ -34,11 +35,11 @@ class DiaryStorageService:
         self.db.commit()
         self.db.refresh(entry)
 
-        chunks = self.splitter.split(content)
         vectors = embed_texts([chunk.content for chunk in chunks])
         milvus_rows = []
         es_rows = []
         for chunk, vector in zip(chunks, vectors):
+            chunk_metadata = _metadata_for_chunk(metadata, chunk.chunk_index)
             db_chunk = DiaryChunk(
                 diary_id=entry.id,
                 chunk_id=chunk.chunk_id,
@@ -48,7 +49,7 @@ class DiaryStorageService:
                 end_offset=chunk.end_offset,
                 token_count=chunk.token_count,
                 semantic_group_id=chunk.semantic_group_id,
-                metadata_json=metadata,
+                metadata_json=chunk_metadata,
             )
             self.db.add(db_chunk)
             created_at = entry.created_at.isoformat()
@@ -58,7 +59,7 @@ class DiaryStorageService:
                 "chunk_index": chunk.chunk_index,
                 "content": chunk.content,
                 "title": entry.title,
-                "metadata": metadata,
+                "metadata": chunk_metadata,
                 "created_at": created_at,
                 "occurred_at": entry.occurred_at.isoformat() if entry.occurred_at else created_at,
             }
@@ -73,8 +74,11 @@ class DiaryStorageService:
             search_index.index_chunks(es_rows)
         return entry
 
-    def _extract_metadata(self, content: str, occurred_at: Optional[datetime]) -> Dict[str, Any]:
-        prompt = """请从日记内容中抽取结构化 metadata，返回 JSON only。
+    def _extract_metadata(self, content: str, chunks: List[Any], occurred_at: Optional[datetime]) -> Dict[str, Any]:
+        chunk_lines = "\n".join([
+            f"[{chunk.chunk_index}] {chunk.content[:600]}" for chunk in chunks
+        ])
+        prompt = """请从日记内容和语义分块中抽取结构化 metadata，返回 JSON only。
 字段：
 - title: 12字以内标题
 - summary: 简短摘要
@@ -83,12 +87,13 @@ class DiaryStorageService:
 - people: 字符串数组
 - places: 字符串数组
 - keywords: 字符串数组
-- happened_at: 如果内容中出现明确时间则 ISO8601，否则 null"""
+- happened_at: 如果内容中出现明确时间则 ISO8601，否则 null
+- chunks: 数组，每个元素包含 chunk_index, topics, emotions, people, places, keywords, summary"""
         try:
             llm = get_llm_for_purpose("tool_enrichment")
             response = llm.invoke([
                 SystemMessage(content="你是严谨的信息抽取器，只返回 JSON。"),
-                HumanMessage(content=f"{prompt}\n\n日记：\n{content}"),
+                HumanMessage(content=f"{prompt}\n\n完整日记：\n{content}\n\n语义分块：\n{chunk_lines}"),
             ])
             metadata = json.loads(_extract_json(response.content))
         except Exception:
@@ -100,6 +105,7 @@ class DiaryStorageService:
         metadata.setdefault("people", [])
         metadata.setdefault("places", [])
         metadata.setdefault("keywords", [])
+        metadata.setdefault("chunks", [])
         metadata["ingested_at"] = datetime.utcnow().isoformat()
         if occurred_at:
             metadata["occurred_at"] = occurred_at.isoformat()
@@ -165,3 +171,16 @@ def _extract_json(content: str) -> str:
     if start >= 0 and end > start:
         return content[start:end]
     return content
+
+
+def _metadata_for_chunk(metadata: Dict[str, Any], chunk_index: int) -> Dict[str, Any]:
+    chunk_items = metadata.get("chunks") or []
+    chunk_metadata = {}
+    for item in chunk_items:
+        if item.get("chunk_index") == chunk_index:
+            chunk_metadata = item
+            break
+    return {
+        "document": {k: v for k, v in metadata.items() if k != "chunks"},
+        "chunk": chunk_metadata,
+    }

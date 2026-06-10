@@ -2,6 +2,24 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Python Launch: FastAPI (local)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "main:app",
+        "--reload",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8080"
+      ],
+      "cwd": "${workspaceFolder}/backend",
+      "jinja": true,
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
       "name": "Python Launch: FastAPI (container)",
       "type": "debugpy",
       "request": "launch",
@@ -32,6 +50,17 @@
         }
       ],
       "justMyCode": true
+    },
+    {
+      "name": "Chrome: Vite Frontend",
+      "type": "pwa-chrome",
+      "request": "launch",
+      "url": "http://localhost:3000",
+      "webRoot": "${workspaceFolder}/frontend",
+      "sourceMaps": true,
+      "skipFiles": [
+        "<node_internals>/**"
+      ]
     }
   ]
 }

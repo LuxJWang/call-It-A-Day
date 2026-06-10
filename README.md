@@ -213,7 +213,41 @@ Open:
 
 ## Local Development
 
-Backend:
+### Debug startup (VS Code + debugpy)
+
+#### Option A: debug the backend in Docker
+
+If you want to debug the backend in Docker, start the stack with the debug override file:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.debug.yml up --build
+```
+
+Then in VS Code, open the Run and Debug view and choose `Python Attach: backend debugpy` to attach to port `5678`.
+
+After the backend is attached, open:
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8080
+- Debugger endpoint: http://localhost:5678
+
+#### Option B: debug the backend locally (no Docker)
+
+If you prefer to run the backend directly on your machine and still debug it in VS Code:
+
+```bash
+cd backend
+conda run -n callItADay python -m pip install -r requirements.txt
+cd ..
+docker compose up -d postgres milvus elasticsearch
+```
+
+Then open the Run and Debug panel and choose `Python Launch: FastAPI (local)`. This launches the backend with `uvicorn --reload` directly from the workspace, so you can set breakpoints without starting the Docker backend container.
+
+After the local backend starts, open:
+- Backend API: http://localhost:8080/docs
+- Frontend: http://localhost:5173 (started separately with `cd frontend && npm run dev`)
+
+### Backend
 
 ```bash
 cd backend

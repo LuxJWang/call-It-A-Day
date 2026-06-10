@@ -5,7 +5,10 @@ import uuid
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+try:
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+except Exception:
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 try:
     from langchain_experimental.text_splitter import SemanticChunker
@@ -47,7 +50,8 @@ class DiarySemanticSplitter:
         try:
             if self._semantic_splitter is None:
                 model_name = config_registry.get_model("embedding").model
-                embeddings = HuggingFaceEmbeddings(model_name=model_name)
+                embeddings = HuggingFaceEmbeddings(model_name=model_name,
+                                                )
                 kwargs = {
                     "embeddings": embeddings,
                     "buffer_size": runtime.get("buffer_size", 1),
@@ -60,7 +64,8 @@ class DiarySemanticSplitter:
 
             docs = self._semantic_splitter.create_documents([content])
             return [doc.page_content.strip() for doc in docs if doc.page_content.strip()]
-        except Exception:
+        except Exception as e:
+            print(f"Error occurred while semantic splitting: {e}")
             return []
 
     def _fallback_split(self, content: str, runtime: Dict) -> List[str]:

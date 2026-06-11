@@ -14,12 +14,13 @@ class MilvusDiaryVectorStore:
         self._dim = None
 
     def ensure_collection(self, dim: int):
-        if self._ready and self._dim == dim:
-            return
         try:
             from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections, utility
 
             connections.connect(alias="default", host=settings.MILVUS_HOST, port=settings.MILVUS_PORT)
+
+            # If a collection with the correct schema dimension does not exist,
+            # create it; otherwise just make sure it is loaded for operations.
             if not utility.has_collection(settings.MILVUS_COLLECTION):
                 fields = [
                     FieldSchema(name="chunk_id", dtype=DataType.VARCHAR, is_primary=True, max_length=64),
@@ -35,11 +36,13 @@ class MilvusDiaryVectorStore:
                     "embedding",
                     {"metric_type": "COSINE", "index_type": "HNSW", "params": {"M": 16, "efConstruction": 200}},
                 )
+
             self._collection = Collection(settings.MILVUS_COLLECTION)
             self._collection.load()
             self._dim = dim
             self._ready = True
-        except Exception:
+        except Exception as e:
+            print(f"Error occurred while ensuring collection: {e}")
             self._ready = False
             self._collection = None
 
@@ -57,20 +60,31 @@ class MilvusDiaryVectorStore:
             [row["created_at"] for row in rows],
             vectors,
         ]
-        self._collection.upsert(entities)
-        self._collection.flush()
+        try:
+            self._collection.upsert(entities)
+            self._collection.flush()
+        except Exception as e:
+            print(f"Error occurred while upserting chunks: {e}")
+            self._ready = False
+            self._collection = None
 
     def search(self, query_vector: List[float], top_k: int) -> List[Dict[str, Any]]:
         self.ensure_collection(len(query_vector))
         if not self._collection:
             return []
-        results = self._collection.search(
-            data=[query_vector],
-            anns_field="embedding",
-            param={"metric_type": "COSINE", "params": {"ef": 64}},
-            limit=top_k,
-            output_fields=["diary_id", "chunk_index", "content", "created_at"],
-        )
+        try:
+            results = self._collection.search(
+                data=[query_vector],
+                anns_field="embedding",
+                param={"metric_type": "COSINE", "params": {"ef": 64}},
+                limit=top_k,
+                output_fields=["diary_id", "chunk_index", "content", "created_at"],
+            )
+        except Exception as e:
+            print(f"Error occurred while searching Milvus: {e}")
+            self._ready = False
+            self._collection = None
+            return []
         hits = []
         for hit in results[0]:
             hits.append({

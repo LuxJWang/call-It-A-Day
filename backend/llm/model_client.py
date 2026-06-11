@@ -4,6 +4,7 @@ from typing import Optional
 from langchain_openai import ChatOpenAI
 from config import get_settings
 from services.config_registry import config_registry
+from ai_tracing import build_callback_manager
 
 settings = get_settings()
 
@@ -27,11 +28,17 @@ def get_llm(model_id: Optional[str] = None, temperature: float = 0.7, purpose: O
     kwargs = {}
     if config and config.max_tokens:
         kwargs["max_tokens"] = config.max_tokens
+
+    callback_manager = build_callback_manager()
+    if callback_manager is not None:
+        kwargs["callback_manager"] = callback_manager
+
     return ChatOpenAI(
         model=model,
         openai_api_key=api_key,
         openai_api_base=base_url,
         temperature=llm_temperature,
+        verbose=settings.LANGCHAIN_VERBOSE,
         **kwargs,
     )
 

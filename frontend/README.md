@@ -86,7 +86,8 @@ Then open the Run and Debug panel and choose `Chrome: Vite Frontend`. VS Code wi
 
 ## How it connects to the backend
 
-- The frontend uses `http://localhost:8080` as its API base in development.
+- The frontend uses the relative API path `/api` by default.
+- In local development, Vite proxies `/api` requests to `http://localhost:8080`.
 - That means the backend must be running before the frontend is opened in the browser.
 - The API paths used by the UI are under `/api/`, for example:
   - `/api/chat`

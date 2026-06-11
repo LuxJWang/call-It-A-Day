@@ -64,6 +64,19 @@ FastAPI backend
 
 The backend is provider agnostic at the application layer. It expects a chat model endpoint compatible with the OpenAI chat API shape, but that endpoint can be backed by any provider or gateway that implements the protocol.
 
+The implementation is organized in a cleaner agentic architecture:
+- Tool layer: atomic operations for chat, diary, and soul document access.
+- Skill layer: grouped domain capabilities that expose tool definitions, validation, and utility behavior.
+- Agent layer: LangGraph workflows for deterministic orchestration, reasoning, and tool selection.
+- Observability layer: Prometheus metrics, OpenTelemetry spans, and LangSmith/Langfuse-friendly trace hooks.
+
+## Observability
+
+- Prometheus metrics exposed at `/metrics`
+- Optional OpenTelemetry tracing with OTLP exporter support
+- Grafana dashboards can be wired to the Prometheus data source
+- Jaeger/Tempo support via the OpenTelemetry Collector
+
 ## Diary Ingestion
 
 Diary ingestion uses this order:
@@ -195,9 +208,17 @@ CROSS_ENCODER_MODEL=cross-encoder/ms-marco-MiniLM-L6-v2
 LANGSMITH_TRACING=false
 LANGSMITH_PROJECT=call-it-a-day
 LANGSMITH_API_KEY=
+LANGFUSE_ENABLED=false
+LANGFUSE_PUBLIC_KEY=
+LANGFUSE_SECRET_KEY=
+LANGFUSE_HOST=https://api.langfuse.com  # or set LANGFUSE_BASE_URL for local/self-hosted installations
+# For the local LangFuse Docker override use LANGFUSE_HOST=http://langfuse-web:3000
+LANGCHAIN_VERBOSE=false
 ```
 
 You can also change the three chat model configs from the application UI after startup.
+
+If the backend is run with LangChain-compatible callbacks, set `LANGCHAIN_VERBOSE=true` to print AI trace events to stdout for local debugging. Disable it in production to avoid noisy logs.
 
 ### Start
 
@@ -205,11 +226,50 @@ You can also change the three chat model configs from the application UI after s
 docker compose up --build
 ```
 
+### Optional: local self-hosted LangFuse
+To run the repo with a local LangFuse stack, start the main services plus the LangFuse override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.langfuse.yml up --build
+```
+
+Or use the new full-stack compose file that includes the repo services, local LangFuse, and observability together:
+
+```bash
+docker compose -f docker-compose.full.yml up --build
+```
+
+If you prefer the override style, you can also run all three files together:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.langfuse.yml -f docker-compose.observability.yml up --build
+```
+
+When using the local LangFuse stack:
+- Frontend: http://localhost:3000
+- Backend: http://localhost:8080
+- LangFuse UI: http://localhost:3002
+- Grafana: http://localhost:3001
+- ClickHouse: http://localhost:8123
+- LangFuse API inside Docker: http://langfuse-web:3000
+
+The backend will automatically target the local LangFuse service via `LANGFUSE_HOST=http://langfuse-web:3000`.
+
+This compose stack uses explicit `platform: linux/amd64` settings for the LangFuse and ClickHouse services, which helps compatibility on Apple Silicon / macOS M1.
+
+For observability, start the backend with Prometheus, Grafana, and OpenTelemetry only if you are not using `docker-compose.full.yml`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.observability.yml up --build
+```
+
 Open:
 
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:8080
 - API docs: http://localhost:8080/docs
+- Elasticsearch / Kibana: http://localhost:5601
+- Milvus Insight: http://localhost:8081
 
 ## Local Development
 

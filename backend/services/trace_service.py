@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 
 from sqlalchemy.orm import Session
 
+from ai_tracing import get_current_langsmith_run_id
 from models import ChatTraceEvent
 
 
@@ -26,6 +27,8 @@ class TraceRecorder:
         latency_ms: Optional[int] = None,
         langsmith_run_id: Optional[str] = None,
     ):
+        if langsmith_run_id is None:
+            langsmith_run_id = get_current_langsmith_run_id()
         event = ChatTraceEvent(
             run_id=self.run_id,
             session_id=self.session_id,

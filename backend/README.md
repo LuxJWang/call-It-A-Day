@@ -2,6 +2,8 @@
 
 This service exposes the FastAPI API used by the frontend.
 
+The backend is organized into explicit tool, skill, and agent layers. Tools implement atomic data operations, skills group related tool behavior, and a LangGraph workflow orchestrates chat reasoning and tool execution.
+
 ## Prerequisites
 
 - Python 3.11
@@ -40,9 +42,25 @@ This service exposes the FastAPI API used by the frontend.
    MODEL_BASE_URL=https://your-model-gateway.example.com/v1
    MODEL_API_KEY=your-api-key
    DEFAULT_LLM_MODEL=your-default-chat-model
+   LANGSMITH_TRACING=false
+   LANGSMITH_PROJECT=call-it-a-day
+   LANGSMITH_API_KEY=
+   LANGFUSE_ENABLED=false
+   LANGFUSE_PUBLIC_KEY=
+   LANGFUSE_SECRET_KEY=
+   LANGFUSE_HOST=https://api.langfuse.com  # or use LANGFUSE_BASE_URL for self-hosted Langfuse
    ```
 
-3. Install Python dependencies:
+   If you want to use the local LangFuse Docker stack, set:
+
+   ```env
+   LANGFUSE_ENABLED=true
+   LANGFUSE_HOST=http://langfuse-web:3000
+   LANGFUSE_PUBLIC_KEY=local
+   LANGFUSE_SECRET_KEY=localsecret
+   ```
+
+   The local LangFuse stack in `docker-compose.full.yml` includes all repo services, local LangFuse, and observability. It also avoids port conflicts by publishing the LangFuse UI on `3002` while Grafana uses `3001`.
 
    ```bash
    conda run -n callItADay python -m pip install -r requirements.txt
@@ -84,10 +102,12 @@ docker compose up -d postgres milvus elasticsearch
 
 Then start the `Python Launch: FastAPI (local)` configuration from the Run and Debug panel. It launches the backend with `uvicorn --reload` directly from the workspace.
 
+For local AI tracing, set `LANGSMITH_TRACING=true` or `LANGFUSE_ENABLED=true` and provide the respective keys. If LangChain callback tracing is available, `LANGCHAIN_VERBOSE=true` will print model trace events to stdout.
+
 ## How it connects to the frontend
 
-- In local development, the frontend calls the backend directly at `http://localhost:8080`.
-- The frontend code currently uses that address in its API calls, so the backend must be running before you start the web UI.
+- In local development, the frontend calls the backend through the relative `/api` path and Vite proxies those requests to `http://localhost:8080`.
+- The backend must be running before you start the local frontend UI.
 - If you run the whole stack with Docker Compose, the frontend container will proxy `/api/*` to the backend container automatically on http://localhost:3000.
 
 ## Optional: run the full stack with Docker Compose
@@ -98,7 +118,17 @@ From the repository root:
 docker compose up --build
 ```
 
+With observability enabled:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.observability.yml up --build
+```
+
 Then open:
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:8080
 - API docs: http://localhost:8080/docs
+- Metrics: http://localhost:8080/metrics
+- Grafana: http://localhost:3001
+- Prometheus: http://localhost:9090
+- Jaeger: http://localhost:16686

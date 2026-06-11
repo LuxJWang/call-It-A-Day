@@ -32,13 +32,20 @@ services:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
     command: minio server /minio_data
+    healthcheck:
+      test: ["CMD-SHELL", "sh -c 'echo > /dev/tcp/127.0.0.1/9000'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     volumes:
       - minio_data:/minio_data
     ports:
       - "9000:9000"
 
   milvus:
-    image: milvusdb/milvus:v2.4.4
+    image: milvusdb/milvus:latest
+    platform: linux/arm64
     command: ["milvus", "run", "standalone"]
     environment:
       ETCD_ENDPOINTS: etcd:2379
@@ -49,8 +56,21 @@ services:
       - "19530:19530"
       - "9091:9091"
     depends_on:
-      - etcd
-      - minio
+      etcd:
+        condition: service_started
+      minio:
+        condition: service_healthy
+
+  milvus_insight:
+    image: milvusdb/milvus-insight:latest
+    environment:
+      - MILVUS_HOST=milvus
+      - MILVUS_PORT=19530
+      - HOST=0.0.0.0
+    ports:
+      - "8081:8081"
+    depends_on:
+      - milvus
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
@@ -62,6 +82,16 @@ services:
       - es_data:/usr/share/elasticsearch/data
     ports:
       - "9200:9200"
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.4
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - SERVER_HOST=0.0.0.0
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
 
   backend:
     build:
@@ -82,6 +112,11 @@ services:
       - LANGSMITH_TRACING=${LANGSMITH_TRACING:-false}
       - LANGSMITH_PROJECT=${LANGSMITH_PROJECT:-call-it-a-day}
       - LANGSMITH_API_KEY=${LANGSMITH_API_KEY:-}
+      - LANGFUSE_ENABLED=${LANGFUSE_ENABLED:-false}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-https://api.langfuse.com}
+      - LANGCHAIN_VERBOSE=${LANGCHAIN_VERBOSE:-false}
     volumes:
       - ./backend:/app
       - ./backend/soul:/app/soul

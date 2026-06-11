@@ -22,3 +22,9 @@ numpy>=1.26
 pymilvus
 elasticsearch>=8,<9
 lightgbm
+langsmith
+langfuse
+prometheus-client>=0.16.0
+opentelemetry-api>=1.17.0
+opentelemetry-sdk>=1.17.0
+opentelemetry-exporter-otlp>=1.17.0

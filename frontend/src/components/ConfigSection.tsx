@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-
-const API_URL = 'http://localhost:8080';
+import { API_URL } from '../api';
 
 interface ModelConfig {
   purpose: string;

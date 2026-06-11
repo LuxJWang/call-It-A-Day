@@ -1,75 +1,38 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from sqlalchemy.orm import Session
 
-from agents.chat_agent import ChatAgent
-from agents.diary_agent import DiaryAgent
-from agents.soul_agent import SoulAgent
-
-
-SKILL_SPECS = [
-    {
-        "skill": "chat-manager",
-        "description": "查询 chat 记录和数量。",
-        "tools": {
-            "query_chat_messages": {
-                "args": {"session_id": "string", "limit": "integer", "skip": "integer"},
-            },
-            "count_chat_messages": {
-                "args": {"session_id": "string"},
-            },
-        },
-    },
-    {
-        "skill": "diary-manager",
-        "description": "查询 diary 记录，或添加 diary 并按 PostgreSQL/Milvus/ES 模式存储。",
-        "tools": {
-            "search_diaries": {
-                "args": {"query": "string", "limit": "integer"},
-            },
-            "add_diary": {
-                "args": {"content": "string", "occurred_at": "ISO8601 string or null"},
-            },
-        },
-    },
-    {
-        "skill": "soul-manager",
-        "description": "查询和校验修改 diary-soul.md、user-soul.md。",
-        "tools": {
-            "read_soul_docs": {
-                "args": {"names": "array of document names or null"},
-            },
-            "apply_soul_change": {
-                "args": {"document_name": "string", "proposed_content": "string", "reason": "string"},
-            },
-        },
-    },
-]
+from skills.chat_skill import ChatSkill
+from skills.diary_skill import DiarySkill
+from skills.soul_skill import SoulSkill
 
 
 class SkillRegistry:
     def __init__(self, db: Session):
-        self.chat_agent = ChatAgent(db)
-        self.diary_agent = DiaryAgent(db)
-        self.soul_agent = SoulAgent(db)
+        self.chat_skill = ChatSkill(db)
+        self.diary_skill = DiarySkill(db)
+        self.soul_skill = SoulSkill(db)
+        self._tool_map = {
+            "query_chat_messages": self.chat_skill.query_chat_messages,
+            "count_chat_messages": self.chat_skill.count_chat_messages,
+            "search_diaries": self.diary_skill.search_diaries,
+            "add_diary": self.diary_skill.add_diary,
+            "read_soul_docs": self.soul_skill.read_soul_docs,
+            "apply_soul_change": self.soul_skill.apply_soul_change,
+        }
 
     def execute(self, tool_name: str, args: Dict[str, Any]) -> Any:
         args = args or {}
-        if tool_name == "query_chat_messages":
-            return self.chat_agent.query_chat_messages(**args)
-        if tool_name == "count_chat_messages":
-            return self.chat_agent.count_chat_messages(**args)
-        if tool_name == "search_diaries":
-            return self.diary_agent.search_diaries(**args)
-        if tool_name == "add_diary":
-            return self.diary_agent.add_diary(**args)
-        if tool_name == "read_soul_docs":
-            return self.soul_agent.read_soul_docs(**args)
-        if tool_name == "apply_soul_change":
-            return self.soul_agent.apply_soul_change(**args)
-        return {"error": f"Unknown tool: {tool_name}"}
+        tool = self._tool_map.get(tool_name)
+        if not tool:
+            raise ValueError(f"Unknown tool: {tool_name}")
+        return tool(**args)
 
-    def specs(self):
-        return SKILL_SPECS
+    def specs(self) -> List[Dict[str, Any]]:
+        return [
+            self.chat_skill.tool_specs,
+            self.diary_skill.tool_specs,
+            self.soul_skill.tool_specs,
+        ]

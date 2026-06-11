@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Depends, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -17,6 +17,7 @@ from schemas import (
     RuntimeConfigResponse, SoulDocumentResponse, TraceEventResponse
 )
 from agents import ChatWorkflow
+from observability import init_observability, PrometheusMiddleware, metrics_response
 from services.config_registry import config_registry
 from services.diary_service import DiaryRetrievalService, DiaryStorageService
 
@@ -30,6 +31,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(PrometheusMiddleware)
+
 
 @app.on_event("startup")
 def startup():
@@ -39,6 +42,7 @@ def startup():
         config_registry.load_from_db(db)
     finally:
         db.close()
+    init_observability()
 
 
 @app.post("/api/diaries", response_model=DiaryEntryResponse)
@@ -152,6 +156,11 @@ def list_chat_messages(
 @app.get("/api/health")
 def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+
+
+@app.get("/metrics")
+def metrics():
+    return metrics_response()
 
 
 @app.get("/api/model-configs", response_model=List[ModelConfigResponse])

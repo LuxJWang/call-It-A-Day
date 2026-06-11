@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
-
-const API_URL = 'http://localhost:8080';
+import { API_URL } from '../api';
 
 interface DiaryEntry {
   id: number;

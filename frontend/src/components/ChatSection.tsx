@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-
-const API_URL = 'http://localhost:8080';
+import { API_URL } from '../api';
 
 interface ChatMessage {
   id: number;

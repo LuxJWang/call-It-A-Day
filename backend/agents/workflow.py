@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from agents.skill_registry import SkillRegistry
 from llm import get_llm_for_purpose
 from models import ChatRun
+from observability import record_llm_call, record_tool_invocation, record_error, trace_span
 from services.config_registry import config_registry
 from services.soul_service import SoulService
 from services.trace_service import TraceRecorder
@@ -120,14 +121,17 @@ class ChatWorkflow:
                 layer="layer1",
                 input_json={"iteration": state["iteration"], "prompt_chars": len(prompt)},
             )
+        record_llm_call("intent_recognition")
         try:
-            llm = get_llm_for_purpose("intent_recognition")
-            response = llm.invoke([
-                SystemMessage(content="你是第一层对话编排器，只返回 JSON。"),
-                HumanMessage(content=prompt),
-            ])
-            decision = json.loads(_extract_json(response.content))
+            with trace_span("intent_and_tool_enrichment", as_type="generation"):
+                llm = get_llm_for_purpose("intent_recognition")
+                response = llm.invoke([
+                    SystemMessage(content="你是第一层对话编排器，只返回 JSON。"),
+                    HumanMessage(content=prompt),
+                ])
+                decision = json.loads(_extract_json(response.content))
         except Exception as exc:
+            record_error("intent_and_tool_enrichment")
             decision = {
                 "action": "finish",
                 "reasoning": f"intent fallback: {exc}",
@@ -156,9 +160,12 @@ class ChatWorkflow:
                 tool_name=tool_name,
                 input_json=args,
             )
+        record_tool_invocation(tool_name or "unknown")
         try:
-            result = self.skill_registry.execute(tool_name, args)
+            with trace_span(f"tool_call.{tool_name}", as_type="tool"):
+                result = self.skill_registry.execute(tool_name, args)
         except Exception as exc:
+            record_error("execute_tool")
             result = {"error": str(exc)}
         call = {"tool": tool_name, "args": args, "result": result}
         state.setdefault("tool_results", []).append(call)
@@ -223,11 +230,14 @@ user-soul.md:
                 layer="layer2",
                 input_json={"history_count": len(state.get("chat_history", []))},
             )
+        record_llm_call("response_generation")
         try:
-            llm = get_llm_for_purpose("response_generation")
-            response = llm.invoke(messages)
-            state["response"] = response.content
+            with trace_span("generate_response", as_type="generation"):
+                llm = get_llm_for_purpose("response_generation")
+                response = llm.invoke(messages)
+                state["response"] = response.content
         except Exception as exc:
+            record_error("generate_response")
             state["response"] = f"我现在没能成功调用回答模型，但已经记录了你的消息。错误：{exc}"
         if self.trace:
             self.trace.record(

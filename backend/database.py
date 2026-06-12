@@ -1,7 +1,8 @@
 from sqlalchemy import inspect, text
 
 from config import get_settings
-from models import Base, ModelConfig, RuntimeConfig, SoulDocument, engine, SessionLocal
+from models import Base, ModelConfig, RuntimeConfig, SoulDocument, User, engine, SessionLocal
+from utils import hash_password
 
 settings = get_settings()
 
@@ -15,7 +16,8 @@ def init_db():
 def _ensure_legacy_columns():
     """Small create_all companion for local dev DBs without migrations."""
     inspector = inspect(engine)
-    if "diary_entries" not in inspector.get_table_names():
+    existing_tables = set(inspector.get_table_names())
+    if "diary_entries" not in existing_tables:
         return
 
     columns = {col["name"] for col in inspector.get_columns("diary_entries")}
@@ -28,6 +30,23 @@ def _ensure_legacy_columns():
         statements.append("ALTER TABLE diary_entries ADD COLUMN occurred_at TIMESTAMP")
     if "updated_at" not in columns:
         statements.append("ALTER TABLE diary_entries ADD COLUMN updated_at TIMESTAMP")
+    if "user_id" not in columns:
+        statements.append("ALTER TABLE diary_entries ADD COLUMN user_id INTEGER")
+
+    if "chat_messages" in existing_tables:
+        chat_columns = {col["name"] for col in inspector.get_columns("chat_messages")}
+        if "user_id" not in chat_columns:
+            statements.append("ALTER TABLE chat_messages ADD COLUMN user_id INTEGER")
+
+    if "chat_runs" in existing_tables:
+        run_columns = {col["name"] for col in inspector.get_columns("chat_runs")}
+        if "user_id" not in run_columns:
+            statements.append("ALTER TABLE chat_runs ADD COLUMN user_id INTEGER")
+
+    if "chat_trace_events" in existing_tables:
+        trace_columns = {col["name"] for col in inspector.get_columns("chat_trace_events")}
+        if "user_id" not in trace_columns:
+            statements.append("ALTER TABLE chat_trace_events ADD COLUMN user_id INTEGER")
 
     with engine.begin() as conn:
         for statement in statements:
@@ -91,6 +110,10 @@ def _seed_defaults():
             exists = db.query(RuntimeConfig).filter(RuntimeConfig.key == key).first()
             if not exists:
                 db.add(RuntimeConfig(key=key, value_json=value))
+
+        if not db.query(User).filter(User.username == "call_it_a_day").first():
+            salt, password_hash = hash_password("call_it_a_day")
+            db.add(User(username="call_it_a_day", password_hash=password_hash, password_salt=salt))
 
         soul_defaults = {
             "diary-soul.md": _default_diary_soul(),

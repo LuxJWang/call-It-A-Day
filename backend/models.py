@@ -10,10 +10,44 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, nullable=False, unique=True, index=True)
+    password_hash = Column(String, nullable=False)
+    password_salt = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String, nullable=False, unique=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    last_active_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ChatSession(Base):
+    __tablename__ = "chat_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(String, nullable=False, unique=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+
+
 class DiaryEntry(Base):
     __tablename__ = "diary_entries"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     title = Column(String, nullable=True)
     content = Column(Text, nullable=False)
     metadata_json = Column(JSON, nullable=True)
@@ -47,6 +81,7 @@ class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     role = Column(String, nullable=False)
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -83,6 +118,7 @@ class ChatRun(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     run_id = Column(String, nullable=False, unique=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     session_id = Column(String, default="default", index=True)
     user_message_id = Column(Integer, nullable=True)
     assistant_message_id = Column(Integer, nullable=True)
@@ -96,6 +132,7 @@ class ChatTraceEvent(Base):
     __tablename__ = "chat_trace_events"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     run_id = Column(String, nullable=False, index=True)
     session_id = Column(String, default="default", index=True)
     layer = Column(String, nullable=True)

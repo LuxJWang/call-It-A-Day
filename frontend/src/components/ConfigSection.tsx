@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { API_URL } from '../api';
+import { authFetchJson } from '../api';
 
 interface ModelConfig {
   purpose: string;
@@ -25,11 +25,11 @@ function ConfigSection() {
 
   const load = async () => {
     const [modelRes, runtimeRes] = await Promise.all([
-      fetch(`${API_URL}/api/model-configs`),
-      fetch(`${API_URL}/api/runtime-configs`),
+      authFetchJson('/model-configs'),
+      authFetchJson('/runtime-configs'),
     ]);
-    setModels(await modelRes.json());
-    setRuntime(await runtimeRes.json());
+    setModels(modelRes);
+    setRuntime(runtimeRes);
   };
 
   useEffect(() => {
@@ -43,9 +43,8 @@ function ConfigSection() {
   const saveModel = async (model: ModelConfig) => {
     setSaving(model.purpose);
     try {
-      await fetch(`${API_URL}/api/model-configs/${model.purpose}`, {
+      await authFetchJson(`/model-configs/${model.purpose}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(model),
       });
     } finally {
@@ -59,12 +58,10 @@ function ConfigSection() {
   const saveChatRuntime = async (value: Record<string, unknown>) => {
     setSaving('chat');
     try {
-      const response = await fetch(`${API_URL}/api/runtime-configs/chat`, {
+      const saved = await authFetchJson('/runtime-configs/chat', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ value_json: value }),
       });
-      const saved = await response.json();
       setRuntime((prev) => prev.map((item) => item.key === 'chat' ? saved : item));
     } finally {
       setSaving(null);

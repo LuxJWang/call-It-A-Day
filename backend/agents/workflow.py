@@ -46,9 +46,10 @@ class ChatWorkflow:
         chat_history: List[Dict[str, str]],
         session_id: str = "default",
         user_message_id: Optional[int] = None,
+        user_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         runtime = config_registry.get_runtime("chat")
-        self.trace = TraceRecorder(self.db, self.run_id, session_id)
+        self.trace = TraceRecorder(self.db, self.run_id, session_id, user_id)
         state: ChatState = {
             "run_id": self.run_id,
             "session_id": session_id,
@@ -62,6 +63,7 @@ class ChatWorkflow:
         result = self.graph.invoke(state)
         run = ChatRun(
             run_id=self.run_id,
+            user_id=user_id or 0,
             session_id=session_id,
             user_message_id=user_message_id,
             layer1_result_json=result.get("final_layer1_result"),

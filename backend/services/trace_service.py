@@ -11,10 +11,11 @@ from models import ChatTraceEvent
 
 
 class TraceRecorder:
-    def __init__(self, db: Session, run_id: str, session_id: str):
+    def __init__(self, db: Session, run_id: str, session_id: str, user_id: Optional[int] = None):
         self.db = db
         self.run_id = run_id
         self.session_id = session_id
+        self.user_id = user_id
 
     def record(
         self,
@@ -30,6 +31,7 @@ class TraceRecorder:
         if langsmith_run_id is None:
             langsmith_run_id = get_current_langsmith_run_id()
         event = ChatTraceEvent(
+            user_id=self.user_id or 0,
             run_id=self.run_id,
             session_id=self.session_id,
             layer=layer,

@@ -22,7 +22,7 @@ class DiaryEntryResponse(BaseModel):
 
 class ChatMessageCreate(BaseModel):
     content: str
-    session_id: str = "default"
+    session_id: Optional[str] = None
 
 
 class ChatMessageResponse(BaseModel):
@@ -38,7 +38,7 @@ class ChatMessageResponse(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
-    session_id: str = "default"
+    session_id: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -46,6 +46,37 @@ class ChatResponse(BaseModel):
     tool_calls: Optional[List[dict]] = None
     run_id: Optional[str] = None
     trace_events: Optional[List[dict]] = None
+    session_id: Optional[str] = None
+
+
+class UserRegister(BaseModel):
+    username: str
+    password: str
+
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+
+class UserResponse(BaseModel):
+    username: str
+
+
+class AuthResponse(BaseModel):
+    username: str
+    token: str
+
+
+class ChatSessionResponse(BaseModel):
+    session_id: str
+    created_at: datetime
+    updated_at: datetime
+    expires_at: datetime
+    expired: bool
+
+    class Config:
+        from_attributes = True
 
 
 class ModelConfigPayload(BaseModel):

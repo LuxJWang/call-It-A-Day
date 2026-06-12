@@ -23,7 +23,7 @@ class DiaryStorageService:
         self.db = db
         self.splitter = DiarySemanticSplitter()
 
-    def add_diary(self, content: str, occurred_at: Optional[datetime] = None) -> DiaryEntry:
+    def add_diary(self, content: str, occurred_at: Optional[datetime] = None, user_id: int = 0) -> DiaryEntry:
         title = content.strip().splitlines()[0][:12] if content.strip() else "Diary"
         metadata = {
             "title": title,
@@ -40,6 +40,7 @@ class DiaryStorageService:
             metadata["occurred_at"] = occurred_at.isoformat()
 
         entry = DiaryEntry(
+            user_id=user_id,
             title=title,
             content=content,
             metadata_json=metadata,

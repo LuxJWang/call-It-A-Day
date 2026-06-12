@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
-import { API_URL } from '../api';
+import { authFetchJson } from '../api';
 
 interface DiaryEntry {
   id: number;
@@ -14,9 +14,7 @@ function DiarySection() {
 
   const { items, loading, hasMore, containerRef, addItem, loadMore } = useInfiniteScroll<DiaryEntry>({
     fetchData: async (skip, limit) => {
-      const response = await fetch(`${API_URL}/api/diaries?skip=${skip}&limit=${limit}`);
-      if (!response.ok) throw new Error('Failed to fetch diary entries');
-      const data = await response.json();
+      const data = await authFetchJson(`/diaries?skip=${skip}&limit=${limit}`);
       return { items: data.entries, hasMore: data.has_more };
     },
     limit: 10,
@@ -28,13 +26,10 @@ function DiarySection() {
 
     setSubmitting(true);
     try {
-      const response = await fetch(`${API_URL}/api/diaries`, {
+      const entry = await authFetchJson('/diaries', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: newEntry }),
       });
-      if (!response.ok) throw new Error('Failed to create entry');
-      const entry = await response.json();
       addItem(entry);
       setNewEntry('');
     } catch (err) {
